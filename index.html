@@ -4,9 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>NFC Reader Webapp</title>
-  <link rel="manifest" href="/manifest.json">
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:1.5rem;}
+    body{font-family:system-ui;margin:1.5rem;}
     button{padding:.8rem 1.2rem;font-size:1rem}
     pre{background:#f4f4f4;padding:1rem;border-radius:6px}
   </style>
@@ -32,83 +31,66 @@
     let ndef = null;
     let abortController = null;
 
+    const PC_IP = "PC_IP_HIER";   // <-- VUL HIER JE PC IP IN
+    const SERVER_URL = `http://${PC_IP}:5000/nfc`;
+
     function toHex(bytes) {
       if (!bytes) return null;
-      return Array.from(bytes).map(b => ('0' + (b & 0xFF).toString(16)).slice(-2).toUpperCase()).join(':');
+      return Array.from(bytes)
+        .map(b => ('0' + (b & 0xFF).toString(16)).slice(-2).toUpperCase())
+        .join(':');
     }
 
     async function startScan() {
       if (!('NDEFReader' in window)) {
-        uidEl.textContent = 'Web NFC niet ondersteund in deze browser.';
+        uidEl.textContent = 'Web NFC niet ondersteund.';
         return;
       }
 
       try {
         abortController = new AbortController();
         ndef = new NDEFReader();
-        // scan() start op gebruikersactie en vraagt toestemming
+
         await ndef.scan({ signal: abortController.signal });
 
         ndef.onreadingerror = () => {
-          uidEl.textContent = 'Fout bij het lezen van de NFC-tag.';
+          uidEl.textContent = 'Fout bij het lezen.';
         };
 
         ndef.onreading = async (event) => {
-          // event.serialNumber is de tag UID (indien beschikbaar)
-          let serial = event.serialNumber || null;
-
-          // fallback: probeer bytes uit records (soms niet beschikbaar)
-          if (!serial && event.message && event.message.records && event.message.records.length > 0) {
-            const record = event.message.records[0];
-            if (record.data) {
-              // record.data is een DataView
-              const arr = new Uint8Array(record.data.buffer || record.data);
-              serial = toHex(arr);
-            }
-          }
-
-          if (!serial) serial = 'UID niet gevonden';
+          let serial = event.serialNumber || "UID onbekend";
 
           uidEl.textContent = serial;
 
-          // verstuur naar je server
           try {
-            await fetch('/nfc-receive', {
+            await fetch(SERVER_URL, {
               method: 'POST',
-              headers: {'Content-Type': 'application/json'},
+              headers: {"Content-Type": "application/json"},
               body: JSON.stringify({ serial })
             });
           } catch (e) {
-            console.warn('Fout bij verzenden:', e);
+            console.warn("Kon niet naar PC sturen:", e);
           }
         };
 
         startBtn.disabled = true;
         stopBtn.disabled = false;
-        uidEl.textContent = 'Scannen actief — houd een NFC-tag tegen de telefoon';
+        uidEl.textContent = "Scannen actief...";
+
       } catch (err) {
-        uidEl.textContent = 'Kon niet starten: ' + err;
+        uidEl.textContent = "Kon niet starten: " + err;
       }
     }
 
     function stopScan() {
-      if (abortController) {
-        abortController.abort();
-        abortController = null;
-        ndef = null;
-      }
+      if (abortController) abortController.abort();
       startBtn.disabled = false;
       stopBtn.disabled = true;
-      uidEl.textContent = 'Scannen gestopt';
+      uidEl.textContent = "Scannen gestopt";
     }
 
     startBtn.addEventListener('click', startScan);
     stopBtn.addEventListener('click', stopScan);
-
-    // PWA: registreer service worker (optioneel)
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(()=>{/* ignore */});
-    }
   </script>
 </body>
 </html>
